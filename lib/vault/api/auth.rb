@@ -267,6 +267,41 @@ module Vault
       return secret
     end
 
+    # Authenticate via the oci instance principal authentication method. If authentication is
+    # successful, the resulting token will be stored on the client and used
+    # for future requests.
+    #
+    # @example
+    #   Vault.auth.oci_instance_principal("read-only", "oci") #=> #<Vault::Secret lease_id="">
+    #
+    # @param [String] role
+    # @param [String] path optional
+    #   the path were the oci auth backend is mounted
+    #
+    # @return [Secret]
+    def oci_instance_principal(role, path = 'oci')
+      require 'oci'
+
+      headers = {
+        "(request-target)" => "get /v1/auth/#{CGI.escape(path)}/login/#{role}",
+        "content-type" => "application/json",
+        :host => URI.parse(Vault.address).host,
+      }
+
+      signer = OCI::Auth::Signers::InstancePrincipalsSecurityTokenSigner.new
+      signer.sign(:get, "#{Vault.address}/v1/auth/#{CGI.escape(path)}/login/#{role}", headers, nil)
+
+      payload = {
+        role: role,
+        request_headers: headers,
+      }
+
+      json = client.post("/v1/auth/#{CGI.escape(path)}/login/#{role}", JSON.fast_generate(payload))
+      secret = Secret.decode(json)
+      client.token = secret.auth.client_token
+      return secret
+    end
+
     # Authenticate via a TLS authentication method. If authentication is
     # successful, the resulting token will be stored on the client and used
     # for future requests.
